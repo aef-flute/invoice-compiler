@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { getClients } from "./actions";
 import { formatCurrency } from "@/lib/format";
+export const dynamic = 'force-dynamic';
+
 
 export default async function ClientsPage() {
   const clients = await getClients();

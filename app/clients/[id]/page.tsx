@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import ClientForm from "@/components/client-form";
 import { getClient, updateClient } from "../actions";
+export const dynamic = 'force-dynamic';
+
 
 export default async function EditClientPage({
   params,

@@ -1,5 +1,7 @@
 import db from "@/db";
 import { formatCurrency } from "@/lib/format";
+export const dynamic = 'force-dynamic';
+
 
 type QuarterlyRow = {
   client_name: string;

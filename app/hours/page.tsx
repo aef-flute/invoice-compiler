@@ -2,6 +2,8 @@ import { getHours } from "./actions";
 import { getClients } from "@/app/clients/actions";
 import HourForm from "@/components/hour-form";
 import HourTable from "@/components/hour-table";
+export const dynamic = 'force-dynamic';
+
 
 export default async function HoursPage() {
   const [hours, clients] = await Promise.all([getHours(), getClients()]);

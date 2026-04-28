@@ -4,6 +4,8 @@ import { getInvoice } from "../actions";
 import { formatCurrency, formatDate } from "@/lib/format";
 import StatusBadge from "@/components/status-badge";
 import InvoiceActions from "@/components/invoice-actions";
+export const dynamic = 'force-dynamic';
+
 
 export default async function InvoiceDetailPage({
   params,
