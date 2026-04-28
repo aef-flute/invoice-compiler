@@ -44,7 +44,8 @@ export async function getHours(filters?: {
 
   query += " ORDER BY h.date DESC, h.created_at DESC";
 
-  return db.prepare(query).all(...params) as HourEntry[];
+  const result = await db.prepare(query).all(...params);
+  return result as HourEntry[];
 }
 
 export async function createHour(formData: FormData) {
@@ -53,21 +54,23 @@ export async function createHour(formData: FormData) {
   const description = formData.get("description") as string;
   const hours = parseFloat(formData.get("hours") as string);
 
-  db.prepare(
-    "INSERT INTO hours (client_id, date, description, hours) VALUES (?, ?, ?, ?)"
-  ).run(clientId, date, description, hours);
+  await db
+    .prepare(
+      "INSERT INTO hours (client_id, date, description, hours) VALUES (?, ?, ?, ?)"
+    )
+    .run(clientId, date, description, hours);
 
   revalidatePath("/hours");
 }
 
 export async function deleteHour(id: number) {
-  const entry = db.prepare("SELECT invoiced FROM hours WHERE id = ?").get(id) as
+  const entry = await db.prepare("SELECT invoiced FROM hours WHERE id = ?").get(id) as
     | { invoiced: number }
     | undefined;
   if (entry?.invoiced) {
     throw new Error("Cannot delete an invoiced hour entry");
   }
-  db.prepare("DELETE FROM hours WHERE id = ?").run(id);
+  await db.prepare("DELETE FROM hours WHERE id = ?").run(id);
   revalidatePath("/hours");
 }
 
@@ -91,5 +94,6 @@ export async function getUninvoicedHours(
 
   query += " ORDER BY h.date ASC";
 
-  return db.prepare(query).all(...params) as HourEntry[];
+  const result = await db.prepare(query).all(...params);
+  return result as HourEntry[];
 }

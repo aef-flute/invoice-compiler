@@ -1,10 +1,10 @@
 import db from "@/db";
 
-export function generateInvoiceNumber(year?: number): string {
+export async function generateInvoiceNumber(year?: number): Promise<string> {
   const y = year ?? new Date().getFullYear();
   const prefix = `INV-${y}-`;
 
-  const row = db
+  const row = await db
     .prepare(
       "SELECT invoice_number FROM invoices WHERE invoice_number LIKE ? ORDER BY invoice_number DESC LIMIT 1"
     )

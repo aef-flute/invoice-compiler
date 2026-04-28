@@ -1,7 +1,7 @@
 import db from "@/db";
 import { formatCurrency } from "@/lib/format";
-export const dynamic = 'force-dynamic';
 
+export const dynamic = 'force-dynamic';
 
 type QuarterlyRow = {
   client_name: string;
@@ -10,8 +10,8 @@ type QuarterlyRow = {
   total: number;
 };
 
-function getQuarterlyData(): QuarterlyRow[] {
-  return db
+async function getQuarterlyData(): Promise<QuarterlyRow[]> {
+  const result = await db
     .prepare(
       `SELECT
         c.name as client_name,
@@ -28,11 +28,12 @@ function getQuarterlyData(): QuarterlyRow[] {
       GROUP BY c.name, year, quarter
       ORDER BY year, quarter, c.name`
     )
-    .all() as QuarterlyRow[];
+    .all();
+  return result as QuarterlyRow[];
 }
 
-export default function DashboardPage() {
-  const data = getQuarterlyData();
+export default async function DashboardPage() {
+  const data = await getQuarterlyData();
 
   // Build a matrix: rows = quarters, columns = clients + total
   const clientNames = [...new Set(data.map((d) => d.client_name))].sort();

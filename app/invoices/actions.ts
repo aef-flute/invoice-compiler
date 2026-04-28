@@ -43,17 +43,18 @@ export type InvoiceWithItems = Invoice & {
 };
 
 export async function getInvoices(): Promise<Invoice[]> {
-  return db
+  const result = await db
     .prepare(
       "SELECT i.*, c.name as client_name FROM invoices i JOIN clients c ON c.id = i.client_id ORDER BY i.date DESC"
     )
-    .all() as Invoice[];
+    .all();
+  return result as Invoice[];
 }
 
 export async function getInvoice(
   id: number
 ): Promise<InvoiceWithItems | undefined> {
-  const invoice = db
+  const invoice = await db
     .prepare(
       "SELECT i.*, c.name as client_name FROM invoices i JOIN clients c ON c.id = i.client_id WHERE i.id = ?"
     )
@@ -61,13 +62,13 @@ export async function getInvoice(
 
   if (!invoice) return undefined;
 
-  const lineItems = db
+  const lineItems = await db
     .prepare(
       "SELECT * FROM invoice_line_items WHERE invoice_id = ? ORDER BY sort_order"
     )
     .all(id) as InvoiceLineItem[];
 
-  const client = db
+  const client = await db
     .prepare("SELECT name, email, address FROM clients WHERE id = ?")
     .get(invoice.client_id) as {
     name: string;
@@ -95,7 +96,7 @@ export type CreateInvoiceInput = {
 };
 
 export async function createInvoice(input: CreateInvoiceInput) {
-  const invoiceNumber = generateInvoiceNumber(
+  const invoiceNumber = await generateInvoiceNumber(
     new Date(input.date + "T00:00:00").getFullYear()
   );
   const dueDate = addDays(input.date, input.dueDays);
@@ -104,32 +105,34 @@ export async function createInvoice(input: CreateInvoiceInput) {
     0
   );
 
-  const result = db.transaction(() => {
-    const res = db
-      .prepare(
-        `INSERT INTO invoices (invoice_number, client_id, date, due_date, status, display_mode, notes, subtotal, total)
-         VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?)`
-      )
-      .run(
-        invoiceNumber,
-        input.clientId,
-        input.date,
-        dueDate,
-        input.displayMode,
-        input.notes || null,
-        total,
-        total
-      );
-
-    const invoiceId = res.lastInsertRowid as number;
-
-    const insertItem = db.prepare(
-      `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, total, sort_order, date, hour_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  // Insert invoice
+  const res = await db
+    .prepare(
+      `INSERT INTO invoices (invoice_number, client_id, date, due_date, status, display_mode, notes, subtotal, total)
+       VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?)`
+    )
+    .run(
+      invoiceNumber,
+      input.clientId,
+      input.date,
+      dueDate,
+      input.displayMode,
+      input.notes || null,
+      total,
+      total
     );
 
-    input.lineItems.forEach((item, idx) => {
-      insertItem.run(
+  const invoiceId = (res as any).lastInsertRowid;
+
+  // Insert line items
+  for (let idx = 0; idx < input.lineItems.length; idx++) {
+    const item = input.lineItems[idx];
+    await db
+      .prepare(
+        `INSERT INTO invoice_line_items (invoice_id, description, quantity, unit_price, total, sort_order, date, hour_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      )
+      .run(
         invoiceId,
         item.description,
         item.quantity,
@@ -139,43 +142,47 @@ export async function createInvoice(input: CreateInvoiceInput) {
         item.date || null,
         item.hourId || null
       );
-    });
+  }
 
-    // Mark hours as invoiced
-    if (input.hourIds.length > 0) {
-      const markHour = db.prepare(
-        "UPDATE hours SET invoiced = 1, invoice_id = ? WHERE id = ?"
-      );
-      for (const hourId of input.hourIds) {
-        markHour.run(invoiceId, hourId);
-      }
+  // Mark hours as invoiced
+  if (input.hourIds.length > 0) {
+    for (const hourId of input.hourIds) {
+      await db
+        .prepare("UPDATE hours SET invoiced = 1, invoice_id = ? WHERE id = ?")
+        .run(invoiceId, hourId);
     }
-
-    return invoiceId;
-  })();
+  }
 
   revalidatePath("/invoices");
   revalidatePath("/hours");
-  return result;
+  return invoiceId;
 }
 
 export async function updateInvoiceStatus(id: number, status: string) {
-  db.prepare(
-    "UPDATE invoices SET status = ?, updated_at = datetime('now') WHERE id = ?"
-  ).run(status, id);
+  await db
+    .prepare(
+      "UPDATE invoices SET status = ?, updated_at = datetime('now') WHERE id = ?"
+    )
+    .run(status, id);
   revalidatePath("/invoices");
 }
 
 export async function deleteInvoice(id: number) {
-  db.transaction(() => {
-    // Release hours back to uninvoiced
-    db.prepare(
+  // Release hours back to uninvoiced
+  await db
+    .prepare(
       "UPDATE hours SET invoiced = 0, invoice_id = NULL WHERE invoice_id = ?"
-    ).run(id);
-    // Delete line items (cascade should handle this, but be explicit)
-    db.prepare("DELETE FROM invoice_line_items WHERE invoice_id = ?").run(id);
-    db.prepare("DELETE FROM invoices WHERE id = ?").run(id);
-  })();
+    )
+    .run(id);
+  
+  // Delete line items
+  await db
+    .prepare("DELETE FROM invoice_line_items WHERE invoice_id = ?")
+    .run(id);
+  
+  // Delete invoice
+  await db.prepare("DELETE FROM invoices WHERE id = ?").run(id);
+
   revalidatePath("/invoices");
   revalidatePath("/hours");
 }
@@ -183,7 +190,7 @@ export async function deleteInvoice(id: number) {
 export async function getLastRateForClient(
   clientId: number
 ): Promise<number | null> {
-  const row = db
+  const row = await db
     .prepare(
       `SELECT li.unit_price FROM invoice_line_items li
        JOIN invoices i ON i.id = li.invoice_id

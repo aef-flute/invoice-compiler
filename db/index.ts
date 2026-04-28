@@ -1,52 +1,96 @@
-import Database from "better-sqlite3";
-import path from "path";
+import { createClient } from "@libsql/client";
+import type { Client } from "@libsql/client";
 import fs from "fs";
+import path from "path";
 
-let db: Database.Database | null = null;
+let client: Client | null = null;
 
 function getDb() {
-  if (db) return db;
+  if (client) return client;
 
   // Skip database initialization during build
   if (process.env.NEXT_PHASE === "phase-production-build") {
     throw new Error("Database not available during build");
   }
 
-  const dbPath = path.join(process.cwd(), "data", "invoicing.db");
-  const dataDir = path.dirname(dbPath);
+  const url = process.env.TURSO_DATABASE_URL;
+  const authToken = process.env.TURSO_AUTH_TOKEN;
 
-  if (!fs.existsSync(dataDir)) {
-    fs.mkdirSync(dataDir, { recursive: true });
+  if (!url || !authToken) {
+    throw new Error("TURSO_DATABASE_URL and TURSO_AUTH_TOKEN must be set");
   }
 
-  db = new Database(dbPath);
-  db.pragma("journal_mode = WAL");
-  db.pragma("foreign_keys = ON");
+  client = createClient({ url, authToken });
 
-  // Auto-initialize schema if tables don't exist
-  const tableCheck = db
-    .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='clients'")
-    .get();
+  // Initialize schema if needed
+  initializeSchema();
 
-  if (!tableCheck) {
-    const schema = fs.readFileSync(
-      path.join(process.cwd(), "db", "schema.sql"),
-      "utf-8"
-    );
-    db.exec(schema);
-  }
-
-  return db;
+  return client;
 }
 
-// Export a proxy that lazily initializes the database
-export default new Proxy({} as Database.Database, {
-  get(target, prop) {
-    const database = getDb();
-    const value = database[prop as keyof Database.Database];
-    if (typeof value === "function") {
-      return value.bind(database);
+async function initializeSchema() {
+  if (!client) return;
+
+  try {
+    // Check if tables exist
+    const result = await client.execute(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='clients'"
+    );
+
+    if (result.rows.length === 0) {
+      // Read and execute schema
+      const schema = fs.readFileSync(
+        path.join(process.cwd(), "db", "schema.sql"),
+        "utf-8"
+      );
+      
+      // Split by semicolon and execute each statement
+      const statements = schema
+        .split(";")
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+
+      for (const statement of statements) {
+        await client.execute(statement);
+      }
     }
-    return value;
+  } catch (error) {
+    console.error("Failed to initialize schema:", error);
+  }
+}
+
+// Adapter to make Turso client work with existing code
+const dbAdapter = {
+  prepare(sql: string) {
+    return {
+      run(...params: unknown[]) {
+        const db = getDb();
+        return db.execute({ sql, args: params });
+      },
+      get(...params: unknown[]) {
+        const db = getDb();
+        return db.execute({ sql, args: params }).then((result) => result.rows[0]);
+      },
+      all(...params: unknown[]) {
+        const db = getDb();
+        return db.execute({ sql, args: params }).then((result) => result.rows);
+      },
+    };
   },
-});
+  transaction(fn: () => void) {
+    return () => {
+      // Turso doesn't support explicit transactions in the same way
+      // For now, just execute the function
+      fn();
+    };
+  },
+  pragma() {
+    // No-op for Turso
+  },
+  exec(sql: string) {
+    const db = getDb();
+    return db.execute(sql);
+  },
+};
+
+export default dbAdapter as any;
