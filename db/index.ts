@@ -1,5 +1,5 @@
 import { createClient } from "@libsql/client";
-import type { Client } from "@libsql/client";
+import type { Client, InValue } from "@libsql/client";
 import fs from "fs";
 import path from "path";
 
@@ -63,15 +63,15 @@ async function initializeSchema() {
 const dbAdapter = {
   prepare(sql: string) {
     return {
-      run(...params: unknown[]) {
+      run(...params: InValue[]) {
         const db = getDb();
         return db.execute({ sql, args: params });
       },
-      get(...params: unknown[]) {
+      get(...params: InValue[]) {
         const db = getDb();
         return db.execute({ sql, args: params }).then((result) => result.rows[0]);
       },
-      all(...params: unknown[]) {
+      all(...params: InValue[]) {
         const db = getDb();
         return db.execute({ sql, args: params }).then((result) => result.rows);
       },
