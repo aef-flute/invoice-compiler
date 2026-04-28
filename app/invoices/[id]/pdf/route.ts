@@ -14,7 +14,7 @@ export async function GET(
   }
 
   const buffer = await renderToBuffer(
-    InvoiceTemplate({ invoice }) as React.ReactElement
+    InvoiceTemplate({ invoice })
   );
 
   return new Response(buffer, {
