@@ -17,8 +17,8 @@ export async function GET(
     InvoiceTemplate({ invoice })
   );
 
-  return new Response(buffer, {
-    headers: {
+return new Response(buffer as unknown as BodyInit, {
+      headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `inline; filename="${invoice.invoice_number}.pdf"`,
     },
